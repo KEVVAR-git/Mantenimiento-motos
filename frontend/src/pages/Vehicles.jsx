@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, Plus, X } from 'lucide-react';
+import { Search, Plus, X, ClipboardList } from 'lucide-react';
 import { getVehicles, createVehicle } from '../api.js';
 import './Vehicles.css';
+
+const API_URL = 'http://127.0.0.1:8000/api';
 
 const Vehicles = () => {
   const location = useLocation();
@@ -22,6 +24,30 @@ const Vehicles = () => {
     model: '',
     year: ''
   });
+
+  // History modal state
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyVehicle, setHistoryVehicle] = useState(null);
+  const [historyRecords, setHistoryRecords] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const handleViewHistory = async (vehicle) => {
+    setHistoryVehicle(vehicle);
+    setHistoryRecords([]);
+    setIsHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/maintenance/${vehicle.plate}`);
+      if (!res.ok) throw new Error('No se pudo cargar el historial.');
+      const data = await res.json();
+      setHistoryRecords(data);
+    } catch (err) {
+      console.error(err);
+      setHistoryRecords([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const loadVehicles = async () => {
     try {
@@ -161,7 +187,10 @@ const Vehicles = () => {
                       <td>{v.model || '-'}</td>
                       <td>{v.year || '-'}</td>
                       <td>
-                        <button className="btn-action">Ver Historial</button>
+                        <button className="btn-action" onClick={() => handleViewHistory(v)}>
+                          <ClipboardList size={14} style={{ marginRight: '4px' }} />
+                          Ver Historial
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -278,6 +307,89 @@ const Vehicles = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {isHistoryOpen && (
+        <div className="modal-overlay" onClick={() => setIsHistoryOpen(false)}>
+          <div className="modal-content animate-fade-in" style={{ maxWidth: '700px', width: '95%' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2>Historial de Mantenimiento</h2>
+                {historyVehicle && (
+                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                    {historyVehicle.plate} — {historyVehicle.owner_name} ({historyVehicle.brand || 'Sin marca'} {historyVehicle.model || ''})
+                  </p>
+                )}
+              </div>
+              <button className="btn-close" onClick={() => setIsHistoryOpen(false)}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1rem 0', maxHeight: '60vh', overflowY: 'auto' }}>
+              {historyLoading ? (
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Cargando historial...</p>
+              ) : historyRecords.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
+                  <ClipboardList size={40} style={{ opacity: 0.3, marginBottom: '0.75rem' }} />
+                  <p>Este vehículo no tiene registros de mantenimiento.</p>
+                </div>
+              ) : (
+                <table className="data-table" style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th>Descripción</th>
+                      <th>Estado</th>
+                      <th>Costo</th>
+                      <th>Fecha</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyRecords.map(r => {
+                      const statusColors = {
+                        pendiente:    { bg: 'rgba(251,191,36,0.15)',  color: '#fbbf24' },
+                        en_progreso:  { bg: 'rgba(59,130,246,0.15)',  color: '#60a5fa' },
+                        completado:   { bg: 'rgba(34,197,94,0.15)',   color: '#4ade80' },
+                      };
+                      const sc = statusColors[r.status] || { bg: 'rgba(156,163,175,0.15)', color: '#9ca3af' };
+                      return (
+                        <tr key={r.id}>
+                          <td>{r.description}</td>
+                          <td>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '9999px',
+                              fontSize: '0.75rem',
+                              fontWeight: '600',
+                              backgroundColor: sc.bg,
+                              color: sc.color
+                            }}>
+                              {r.status === 'en_progreso' ? 'En Progreso' : r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                            </span>
+                          </td>
+                          <td>
+                            {r.cost != null
+                              ? `$${Number(r.cost).toLocaleString('es-CO')} COP`
+                              : '-'}
+                          </td>
+                          <td>{r.scheduled_date ? r.scheduled_date.split('T')[0] : (r.created_at ? r.created_at.split('T')[0] : '-')}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn-primary" onClick={() => setIsHistoryOpen(false)}>
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
