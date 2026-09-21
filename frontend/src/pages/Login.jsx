@@ -32,20 +32,9 @@ const Login = ({ onLogin }) => {
         return;
       }
 
-      if (normalizedUsername === 'admin' && normalizedPassword === 'admin123') {
-        localStorage.setItem('token', 'mock-token');
-        onLogin(true);
-        return;
-      }
-
-      setError('Credenciales incorrectas. Intenta con admin / admin123');
+      setError('Credenciales incorrectas. Verifica tu usuario y contraseña.');
     } catch (err) {
-      if (normalizedUsername === 'admin' && normalizedPassword === 'admin123') {
-        localStorage.setItem('token', 'mock-token');
-        onLogin(true);
-      } else {
-        setError('No se pudo conectar con el backend. Usa admin / admin123 o inicia el servidor en http://127.0.0.1:8000');
-      }
+      setError('No se pudo conectar con el backend. Asegúrate de iniciar el servidor en http://127.0.0.1:8000');
     } finally {
       setIsLoading(false);
     }

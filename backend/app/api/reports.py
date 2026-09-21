@@ -6,14 +6,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
-from app.models import Vehicle, Maintenance
+from app.models import Maintenance, Vehicle, User
 from app.schemas import DashboardSummary
+from app.api.auth import get_current_user
 
 router = APIRouter()
 
 
 @router.get("/summary", response_model=DashboardSummary)
-def get_dashboard_summary(db: Session = Depends(get_db)):
+def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Obtiene un resumen de estadísticas reales para el dashboard."""
     total_vehicles = db.query(func.count(Vehicle.id)).scalar() or 0
     total_maintenance = db.query(func.count(Maintenance.id)).scalar() or 0

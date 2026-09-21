@@ -3,15 +3,29 @@ const API_URL = 'http://127.0.0.1:8000/api';
 async function fetchAPI(endpoint, options = {}) {
   let response;
   try {
+    const token = localStorage.getItem('token');
+    const defaultHeaders = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      defaultHeaders['Authorization'] = `Bearer ${token}`;
+    }
+
     response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...defaultHeaders,
         ...options.headers,
       },
     });
   } catch (err) {
     throw new Error('No se pudo conectar con el backend (http://127.0.0.1:8000). Asegúrate de iniciar el servidor con `python main.py`.');
+  }
+
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+    return;
   }
 
   if (!response.ok) {
@@ -89,12 +103,25 @@ export async function analyzePlate(file) {
   const formData = new FormData();
   formData.append('file', file);
 
+  const token = localStorage.getItem('token');
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_URL}/ocr/analyze-plate`, {
     method: 'POST',
     body: formData,
+    headers,
     // Do not set Content-Type header manually when sending FormData,
     // the browser will automatically set it with the correct boundary.
   });
+
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+    throw new Error('Sesión expirada');
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

@@ -10,8 +10,10 @@ const OCRModule = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState('');
+  const [rawText, setRawText] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState('');
+  const [hasScanned, setHasScanned] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleImageUpload = (e) => {
@@ -21,19 +23,35 @@ const OCRModule = () => {
       const url = URL.createObjectURL(file);
       setImagePreview(url);
       setResult('');
+      setRawText('');
       setError('');
       setIsEditing(false);
+      setHasScanned(false);
     }
   };
 
   const processImage = async () => {
-    if (!imageFile) return;
+    if (!imageFile || isProcessing) return;
     setIsProcessing(true);
+    setHasScanned(true);
     setError('');
+    setResult('');
+    setRawText('');
     
     try {
       const data = await analyzePlate(imageFile);
-      setResult(data.detected_text || 'NO-DETECTADA');
+      const finalPlate = data.detected_text || 'NO-DETECTADA';
+      
+      // Guardar el texto crudo para ayudar al usuario a corregir
+      if (data.raw_text) setRawText(data.raw_text);
+      
+      // Efecto "máquina de escribir"
+      let currentText = '';
+      for (let i = 0; i < finalPlate.length; i++) {
+        currentText += finalPlate.charAt(i);
+        setResult(currentText);
+        await new Promise(r => setTimeout(r, 150));
+      }
     } catch (err) {
       console.error(err);
       setError(err.message || 'Error al procesar la imagen con OCR.');
@@ -48,6 +66,7 @@ const OCRModule = () => {
     setResult('');
     setError('');
     setIsEditing(false);
+    setHasScanned(false);
   };
 
   const handleProceed = async () => {
@@ -87,7 +106,15 @@ const OCRModule = () => {
               </button>
             </div>
           ) : (
-            <div className="image-preview">
+            <div 
+              className={`image-preview ${isProcessing ? 'scanning' : ''}`}
+              onMouseEnter={() => {
+                if (!hasScanned && !isProcessing && !result) {
+                  processImage();
+                }
+              }}
+            >
+              <div className="scanner-laser"></div>
               <img src={imagePreview} alt="Placa" />
               <button className="btn-close" onClick={clearImage}>
                 <X size={20} />
@@ -124,7 +151,7 @@ const OCRModule = () => {
             </div>
           )}
 
-          {result && (
+          {(result || isEditing) && (
             <div className="result-card animate-fade-in mt-4">
               <h3>Resultado:</h3>
               {isEditing ? (
@@ -142,6 +169,11 @@ const OCRModule = () => {
               ) : (
                 <div className="display-mode">
                   <div className="plate-display">{result}</div>
+                  {rawText && (
+                    <p className="text-muted" style={{ fontSize: '0.75rem', textAlign: 'center', marginTop: '0.5rem', letterSpacing: '0.1em' }}>
+                      Texto detectado: <strong>{rawText}</strong>
+                    </p>
+                  )}
                   <button className="btn-outline" onClick={() => setIsEditing(true)}>
                     Corregir Manualmente
                   </button>

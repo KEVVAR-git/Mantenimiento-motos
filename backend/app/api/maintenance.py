@@ -6,14 +6,15 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
-from app.models import Maintenance, Vehicle
+from app.models import Maintenance, Vehicle, User
 from app.schemas import MaintenanceCreate, MaintenanceResponse
+from app.api.auth import get_current_user
 
 router = APIRouter()
 
 
 @router.get("/", response_model=List[MaintenanceResponse])
-def get_all_maintenance_records(db: Session = Depends(get_db)):
+def get_all_maintenance_records(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Obtiene todos los registros de mantenimiento con la placa del vehículo."""
     records = db.query(Maintenance).all()
     result = []
@@ -33,7 +34,7 @@ def get_all_maintenance_records(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=MaintenanceResponse)
-def create_maintenance_record(record: MaintenanceCreate, db: Session = Depends(get_db)):
+def create_maintenance_record(record: MaintenanceCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Crea un nuevo registro de mantenimiento."""
     # Buscar el vehículo por placa
     vehicle = db.query(Vehicle).filter(Vehicle.plate == record.plate).first()
@@ -67,7 +68,7 @@ def create_maintenance_record(record: MaintenanceCreate, db: Session = Depends(g
 
 
 @router.get("/{plate}", response_model=List[MaintenanceResponse])
-def get_maintenance_history(plate: str, db: Session = Depends(get_db)):
+def get_maintenance_history(plate: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Obtiene el historial de mantenimiento de un vehículo por su placa."""
     vehicle = db.query(Vehicle).filter(Vehicle.plate == plate).first()
     if not vehicle:
@@ -90,7 +91,7 @@ def get_maintenance_history(plate: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{record_id}")
-def delete_maintenance_record(record_id: int, db: Session = Depends(get_db)):
+def delete_maintenance_record(record_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Elimina un registro de mantenimiento por su ID."""
     record = db.query(Maintenance).filter(Maintenance.id == record_id).first()
     if not record:
