@@ -2,6 +2,7 @@
 Endpoints CRUD para vehículos (motocicletas).
 Todas las operaciones se hacen contra la base de datos real en Supabase.
 """
+import re
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import List
@@ -23,13 +24,14 @@ def get_vehicles(db: Session = Depends(get_db), current_user: User = Depends(get
 @router.post("/", response_model=VehicleResponse)
 def create_vehicle(vehicle_data: VehicleCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Registra un nuevo vehículo en la base de datos."""
+    clean_plate = re.sub(r'[-\s]', '', vehicle_data.plate).upper()
     # Verificar si la placa ya existe
-    existing = db.query(Vehicle).filter(Vehicle.plate == vehicle_data.plate).first()
+    existing = db.query(Vehicle).filter(Vehicle.plate == clean_plate).first()
     if existing:
         raise HTTPException(status_code=400, detail="Ya existe un vehículo con esa placa")
 
     new_vehicle = Vehicle(
-        plate=vehicle_data.plate,
+        plate=clean_plate,
         owner_name=vehicle_data.owner_name,
         owner_phone=vehicle_data.owner_phone,
         brand=vehicle_data.brand,
@@ -44,20 +46,22 @@ def create_vehicle(vehicle_data: VehicleCreate, db: Session = Depends(get_db), c
 
 @router.get("/{plate}", response_model=VehicleResponse)
 def get_vehicle_by_plate(plate: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Busca un vehículo por su número de placa."""
-    vehicle = db.query(Vehicle).filter(Vehicle.plate == plate).first()
+    """Busca un vehículo por su número de placa (normaliza guiones y espacios)."""
+    clean_plate = re.sub(r'[-\s]', '', plate).upper()
+    vehicle = db.query(Vehicle).filter(Vehicle.plate == clean_plate).first()
     if not vehicle:
-        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+        raise HTTPException(status_code=404, detail=f"Vehículo con placa '{clean_plate}' no encontrado")
     return vehicle
 
 
 @router.delete("/{plate}")
 def delete_vehicle(plate: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Elimina un vehículo por su placa."""
-    vehicle = db.query(Vehicle).filter(Vehicle.plate == plate).first()
+    clean_plate = re.sub(r'[-\s]', '', plate).upper()
+    vehicle = db.query(Vehicle).filter(Vehicle.plate == clean_plate).first()
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehículo no encontrado")
 
     db.delete(vehicle)
     db.commit()
-    return {"message": f"Vehículo con placa {plate} eliminado exitosamente"}
+    return {"message": f"Vehículo con placa {clean_plate} eliminado exitosamente"}

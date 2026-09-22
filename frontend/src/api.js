@@ -75,9 +75,21 @@ export async function getMaintenances() {
   return await fetchAPI('/maintenance/');
 }
 
+export async function getMaintenanceHistory(plate) {
+  const cleanPlate = plate.replace(/[-\s]/g, '').toUpperCase();
+  return await fetchAPI(`/maintenance/${cleanPlate}`);
+}
+
 export async function createMaintenance(data) {
   return await fetchAPI('/maintenance/', {
     method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateMaintenance(id, data) {
+  return await fetchAPI(`/maintenance/${id}`, {
+    method: 'PUT',
     body: JSON.stringify(data),
   });
 }

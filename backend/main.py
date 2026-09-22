@@ -28,27 +28,30 @@ def startup_event():
     1. Crear todas las tablas en la base de datos (si no existen)
     2. Crear un usuario admin por defecto (si no existe)
     """
-    print("[INFO] Conectando a la base de datos Supabase...")
-    Base.metadata.create_all(bind=engine)
-    print("[OK] Tablas creadas/verificadas exitosamente.")
-
-    # Crear usuario admin por defecto
-    db = SessionLocal()
     try:
-        existing_admin = db.query(User).filter(User.username == "admin").first()
-        if not existing_admin:
-            admin_user = User(
-                username="admin",
-                hashed_password=pwd_context.hash("admin123"),
-                role="administrator"
-            )
-            db.add(admin_user)
-            db.commit()
-            print("[OK] Usuario admin creado (usuario: admin, contrasena: admin123)")
-        else:
-            print("[INFO] Usuario admin ya existe.")
-    finally:
-        db.close()
+        print("[INFO] Conectando a la base de datos Supabase...")
+        Base.metadata.create_all(bind=engine)
+        print("[OK] Tablas creadas/verificadas exitosamente.")
+
+        # Crear usuario admin por defecto
+        db = SessionLocal()
+        try:
+            existing_admin = db.query(User).filter(User.username == "admin").first()
+            if not existing_admin:
+                admin_user = User(
+                    username="admin",
+                    hashed_password=pwd_context.hash("admin123"),
+                    role="administrator"
+                )
+                db.add(admin_user)
+                db.commit()
+                print("[OK] Usuario admin creado (usuario: admin, contrasena: admin123)")
+            else:
+                print("[INFO] Usuario admin ya existe.")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[WARNING] No se pudo inicializar la base de datos en startup: {e}")
 
 
 @app.get("/")

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Activity, Bike, Wrench } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Activity, Bike, Wrench, PlusCircle, Camera, ArrowRight } from 'lucide-react';
 import { getDashboardSummary } from '../api.js';
 import './Dashboard.css';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [summary, setSummary] = useState({
     total_vehicles: 0,
     total_maintenance_records: 0,
@@ -16,7 +18,15 @@ const Dashboard = () => {
     const fetchSummary = async () => {
       try {
         const data = await getDashboardSummary();
-        setSummary(data);
+        if (data && typeof data === 'object') {
+          setSummary({
+            total_vehicles: data.total_vehicles ?? 0,
+            total_maintenance_records: data.total_maintenance_records ?? 0,
+            active_maintenances: data.active_maintenances ?? 0,
+            total_revenue: data.total_revenue ?? 0,
+            recent_activity: Array.isArray(data.recent_activity) ? data.recent_activity : []
+          });
+        }
       } catch (error) {
         console.error('Error fetching dashboard summary:', error);
       }
@@ -35,39 +45,84 @@ const Dashboard = () => {
 
   return (
     <div className="animate-fade-in container">
-      <div className="page-header">
-        <h1 className="page-title">Panel de Control</h1>
-        <p className="text-muted">Resumen del sistema de mantenimiento.</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 className="page-title">Panel de Control</h1>
+          <p className="text-muted">Resumen del sistema de mantenimiento.</p>
+        </div>
+
+        {/* Quick Action Buttons in Header */}
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button 
+            className="btn-primary" 
+            onClick={() => navigate('/vehiculos')}
+            style={{ fontSize: '0.875rem' }}
+          >
+            <Bike size={18} />
+            Ver Vehículos
+          </button>
+          <button 
+            className="btn-primary" 
+            onClick={() => navigate('/mantenimientos')}
+            style={{ fontSize: '0.875rem' }}
+          >
+            <Wrench size={18} />
+            Mantenimientos
+          </button>
+          <button 
+            className="btn-primary" 
+            onClick={() => navigate('/ocr')}
+            style={{ fontSize: '0.875rem', backgroundColor: '#8b5cf6' }}
+          >
+            <Camera size={18} />
+            Escanear Placa
+          </button>
+        </div>
       </div>
 
       <div className="stats-grid">
-        <div className="stat-card glass-panel">
+        <div 
+          className="stat-card glass-panel" 
+          onClick={() => navigate('/vehiculos')}
+          style={{ cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
+          title="Ver todos los vehículos"
+        >
           <div className="stat-icon bg-primary-light">
             <Bike className="text-primary" size={24} />
           </div>
           <div className="stat-info">
             <h3>Vehículos Registrados</h3>
-            <p className="stat-value">{summary.total_vehicles}</p>
+            <p className="stat-value">{summary?.total_vehicles ?? 0}</p>
           </div>
         </div>
 
-        <div className="stat-card glass-panel">
+        <div 
+          className="stat-card glass-panel"
+          onClick={() => navigate('/mantenimientos')}
+          style={{ cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
+          title="Ver mantenimientos activos"
+        >
           <div className="stat-icon bg-warning-light">
             <Wrench className="text-warning" size={24} />
           </div>
           <div className="stat-info">
             <h3>En Mantenimiento</h3>
-            <p className="stat-value">{summary.active_maintenances}</p>
+            <p className="stat-value">{summary?.active_maintenances ?? 0}</p>
           </div>
         </div>
 
-        <div className="stat-card glass-panel">
+        <div 
+          className="stat-card glass-panel"
+          onClick={() => navigate('/mantenimientos')}
+          style={{ cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
+          title="Ver todos los mantenimientos"
+        >
           <div className="stat-icon bg-success-light">
             <Activity className="text-success" size={24} />
           </div>
           <div className="stat-info">
             <h3>Completados (Mes)</h3>
-            <p className="stat-value">{summary.total_maintenance_records}</p>
+            <p className="stat-value">{summary?.total_maintenance_records ?? 0}</p>
           </div>
         </div>
       </div>

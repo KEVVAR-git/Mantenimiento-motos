@@ -16,8 +16,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("No se encontró DATABASE_URL en las variables de entorno. Revisa el archivo .env")
 
-# Crear el motor de conexión a PostgreSQL
-engine = create_engine(DATABASE_URL, echo=False)
+# Crear el motor de conexión a PostgreSQL con reconexión automática
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, pool_recycle=300)
 
 # Crear la fábrica de sesiones
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

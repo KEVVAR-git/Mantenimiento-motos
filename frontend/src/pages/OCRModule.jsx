@@ -70,17 +70,23 @@ const OCRModule = () => {
   };
 
   const handleProceed = async () => {
+    if (!result || result === 'NO-DETECTADA') {
+      setError('Debes escanear o corregir manualmente una placa válida antes de proceder.');
+      return;
+    }
+    const cleanPlate = result.replace(/[-\s]/g, '').toUpperCase();
     try {
       setIsProcessing(true);
-      // Intentar buscar la placa en la base de datos
-      await getVehicleByPlate(result);
+      setError('');
+      // Intentar buscar la placa en la base de datos (limpiando guiones)
+      await getVehicleByPlate(cleanPlate);
       
       // Si no hay error, la placa existe. Vamos a Mantenimientos para crear un servicio.
-      navigate('/mantenimientos', { state: { prefilledPlate: result } });
+      navigate('/mantenimientos', { state: { prefilledPlate: cleanPlate } });
     } catch (err) {
       // Si lanza error (ej. 404), el vehículo NO existe.
       // Redirigir a Vehículos para registrarlo primero.
-      navigate('/vehiculos', { state: { prefilledPlate: result, requireRegistration: true } });
+      navigate('/vehiculos', { state: { prefilledPlate: cleanPlate, requireRegistration: true } });
     } finally {
       setIsProcessing(false);
     }

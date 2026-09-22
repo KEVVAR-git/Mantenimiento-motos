@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, Plus, X, ClipboardList } from 'lucide-react';
-import { getVehicles, createVehicle } from '../api.js';
+import { Search, Plus, X, ClipboardList, Trash2 } from 'lucide-react';
+import { getVehicles, createVehicle, deleteVehicle, getMaintenanceHistory } from '../api.js';
 import './Vehicles.css';
-
-const API_URL = 'http://127.0.0.1:8000/api';
 
 const Vehicles = () => {
   const location = useLocation();
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Modal and Form States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,17 +36,37 @@ const Vehicles = () => {
     setIsHistoryOpen(true);
     setHistoryLoading(true);
     try {
-      const res = await fetch(`${API_URL}/maintenance/${vehicle.plate}`);
-      if (!res.ok) throw new Error('No se pudo cargar el historial.');
-      const data = await res.json();
-      setHistoryRecords(data);
+      const data = await getMaintenanceHistory(vehicle.plate);
+      setHistoryRecords(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error(err);
+      console.error('Error al cargar historial:', err);
       setHistoryRecords([]);
     } finally {
       setHistoryLoading(false);
     }
   };
+
+  const handleDeleteVehicle = async (plate) => {
+    if (!window.confirm(`¿Estás seguro de eliminar el vehículo con placa ${plate}? Se eliminarán también sus registros asociados.`)) {
+      return;
+    }
+    try {
+      await deleteVehicle(plate);
+      await loadVehicles();
+    } catch (err) {
+      alert(err.message || 'Error al eliminar el vehículo.');
+    }
+  };
+
+  const filteredVehicles = vehicles.filter(v => {
+    const q = searchTerm.toLowerCase();
+    return (
+      (v.plate && v.plate.toLowerCase().includes(q)) ||
+      (v.owner_name && v.owner_name.toLowerCase().includes(q)) ||
+      (v.brand && v.brand.toLowerCase().includes(q)) ||
+      (v.model && v.model.toLowerCase().includes(q))
+    );
+  });
 
   const loadVehicles = async () => {
     try {
@@ -81,7 +100,11 @@ const Vehicles = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    if (name === 'plate') {
+      setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleOpenModal = () => {
@@ -98,15 +121,44 @@ const Vehicles = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setModalError('');
+
+    // Validación estricta de formato de placa colombiana
+    const cleanPlate = formData.plate.replace(/[-\s]/g, '').toUpperCase();
+    const plateRegex = /^[A-Z]{3}\d{2}[A-Z\d]?$/;
+    if (!plateRegex.test(cleanPlate)) {
+      setModalError('Formato de placa inválido. Debe ser como ABC12D (motos), ABC123 o ABC12.');
+      return;
+    }
+
+    // Validación de año (no futuro excesivo, no anterior a 1970)
+    const currentYear = new Date().getFullYear();
+    const maxYear = currentYear + 1;
+    if (formData.year) {
+      const yr = parseInt(formData.year);
+      if (isNaN(yr) || yr < 1970 || yr > maxYear) {
+        setModalError(`El año del vehículo debe estar entre 1970 y ${maxYear}.`);
+        return;
+      }
+    }
+
+    // Validación de teléfono si se suministra
+    if (formData.phone) {
+      const cleanPhone = formData.phone.trim().replace(/[\s-]/g, '');
+      if (!/^\d{7,10}$/.test(cleanPhone)) {
+        setModalError('El teléfono debe tener entre 7 y 10 dígitos numéricos.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const apiData = {
-        plate: formData.plate.trim(),
+        plate: cleanPlate,
         owner_name: formData.owner.trim(),
         owner_phone: formData.phone ? formData.phone.trim() : null,
         brand: formData.brand ? formData.brand.trim() : null,
         model: formData.model ? formData.model.trim() : null,
-        year: formData.year ? parseInt(formData.year) : new Date().getFullYear()
+        year: formData.year ? parseInt(formData.year) : currentYear
       };
       await createVehicle(apiData);
       handleCloseModal();
@@ -138,7 +190,9 @@ const Vehicles = () => {
           <input 
             type="text" 
             className="input-field" 
-            placeholder="Buscar por placa o propietario..."
+            placeholder="Buscar por placa, propietario, marca o modelo..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
             style={{ paddingLeft: '2.5rem' }}
           />
         </div>
@@ -172,14 +226,14 @@ const Vehicles = () => {
                 </tr>
               </thead>
               <tbody>
-                {vehicles.length === 0 ? (
+                {filteredVehicles.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                      No hay vehículos registrados.
+                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                      {searchTerm ? 'No se encontraron vehículos que coincidan con la búsqueda.' : 'No hay vehículos registrados.'}
                     </td>
                   </tr>
                 ) : (
-                  vehicles.map(v => (
+                  filteredVehicles.map(v => (
                     <tr key={v.id}>
                       <td><strong>{v.plate}</strong></td>
                       <td>{v.owner_name}</td>
@@ -187,10 +241,25 @@ const Vehicles = () => {
                       <td>{v.model || '-'}</td>
                       <td>{v.year || '-'}</td>
                       <td>
-                        <button className="btn-action" onClick={() => handleViewHistory(v)}>
-                          <ClipboardList size={14} style={{ marginRight: '4px' }} />
-                          Ver Historial
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button className="btn-action" onClick={() => handleViewHistory(v)}>
+                            <ClipboardList size={14} style={{ marginRight: '4px' }} />
+                            Ver Historial
+                          </button>
+                          <button 
+                            className="btn-action" 
+                            style={{ 
+                              backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+                              color: '#f87171', 
+                              border: '1px solid rgba(239, 68, 68, 0.25)',
+                              padding: '0.35rem 0.5rem'
+                            }}
+                            onClick={() => handleDeleteVehicle(v.plate)}
+                            title="Eliminar vehículo"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -228,15 +297,17 @@ const Vehicles = () => {
               )}
 
               <div className="form-group">
-                <label>Placa *</label>
+                <label>Placa * <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(Ej. ABC12D para motos o ABC123)</span></label>
                 <input 
                   type="text" 
                   name="plate" 
                   value={formData.plate} 
                   onChange={handleInputChange} 
                   required 
-                  placeholder="Ej. XYZ-123"
+                  maxLength={8}
+                  placeholder="Ej. ABC12D"
                   className="input-field"
+                  style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}
                 />
               </div>
               <div className="form-group">
@@ -258,7 +329,8 @@ const Vehicles = () => {
                   name="phone" 
                   value={formData.phone} 
                   onChange={handleInputChange} 
-                  placeholder="Número de contacto"
+                  maxLength={15}
+                  placeholder="Número de contacto (7 a 10 dígitos)"
                   className="input-field"
                 />
               </div>
@@ -293,7 +365,9 @@ const Vehicles = () => {
                   name="year" 
                   value={formData.year} 
                   onChange={handleInputChange} 
-                  placeholder="Ej. 2023"
+                  min="1970"
+                  max={new Date().getFullYear() + 1}
+                  placeholder={`Ej. ${new Date().getFullYear()}`}
                   className="input-field"
                 />
               </div>
