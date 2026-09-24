@@ -9,6 +9,13 @@ import pytesseract
 from PIL import Image
 import re
 
+try:
+    import easyocr
+    easyocr_reader = easyocr.Reader(['en'], gpu=False)
+except Exception as e:
+    print(f"[WARN] No se pudo inicializar EasyOCR: {e}")
+    easyocr_reader = None
+
 router = APIRouter()
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -203,6 +210,73 @@ def find_best_plate(texts: list[str]) -> str | None:
     return best_moto
 
 
+def extract_plate_easyocr(img: np.ndarray) -> tuple[str | None, float]:
+    """
+    Motor primario con Inteligencia Artificial profunda (EasyOCR + CRAFT).
+    Detecta texto natural en fotos de cámaras, ángulos oblicuos y malas condiciones.
+    """
+    if easyocr_reader is None:
+        return None, 0.0
+
+    try:
+        results = easyocr_reader.readtext(img)
+        items = []
+        for bbox, text, prob in results:
+            if prob < 0.25:
+                continue
+            clean_t = re.sub(r'[^A-Z0-9]', '', text.upper())
+            if 'COLOMB' in clean_t:
+                continue
+            if clean_t and len(clean_t) >= 2:
+                xs = [p[0] for p in bbox]
+                ys = [p[1] for p in bbox]
+                items.append({
+                    'text': clean_t,
+                    'prob': float(prob),
+                    'cx': sum(xs) / len(xs),
+                    'cy': sum(ys) / len(ys)
+                })
+
+        # 1. Caso bloque único que ya contiene la placa completa
+        for it in items:
+            m = re.search(r'[A-Z]{3}\d{2}[A-Z]|[A-Z]{3}\d{3}', it['text'])
+            if m:
+                return m.group(0), it['prob']
+
+        # 2. Caso bloques horizontales divididos (ej. 'COZ' a la izquierda, '92E' a la derecha)
+        items.sort(key=lambda x: x['cx'])
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                left = items[i]
+                right = items[j]
+                if abs(left['cy'] - right['cy']) < 100:
+                    letters = left['text'][:3]
+                    numbers_tail = right['text'][:3]
+                    comb = letters + numbers_tail
+                    if re.match(r'^[A-Z]{3}\d{2}[A-Z]$|^[A-Z]{3}\d{3}$', comb):
+                        avg_p = (left['prob'] + right['prob']) / 2
+                        return comb, float(avg_p)
+
+        # 3. Caso bloques verticales (placas en dos líneas: arriba letras, abajo números/letra)
+        items.sort(key=lambda x: x['cy'])
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                top_b = items[i]
+                bot_b = items[j]
+                if abs(top_b['cx'] - bot_b['cx']) < 100:
+                    letters = top_b['text'][:3]
+                    numbers_tail = bot_b['text'][:3]
+                    comb = letters + numbers_tail
+                    if re.match(r'^[A-Z]{3}\d{2}[A-Z]$|^[A-Z]{3}\d{3}$', comb):
+                        avg_p = (top_b['prob'] + bot_b['prob']) / 2
+                        return comb, float(avg_p)
+
+        return None, 0.0
+    except Exception as e:
+        print(f"[EasyOCR processing error]: {e}")
+        return None, 0.0
+
+
 @router.post("/analyze-plate")
 async def analyze_license_plate(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if not file.content_type.startswith("image/"):
@@ -214,24 +288,32 @@ async def analyze_license_plate(file: UploadFile = File(...), db: Session = Depe
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # Escalar a 800px de ancho (tamaño óptimo para Tesseract)
-        target_w = 800
-        ratio = target_w / img.shape[1]
-        img_resized = cv2.resize(img, (target_w, int(img.shape[0] * ratio)), interpolation=cv2.INTER_CUBIC)
+        plate_raw = None
+        confidence = 0.85
 
-        # Obtener todos los textos posibles
-        all_texts = ocr_variants(img_resized)
-
-        # Buscar patrón de placa colombiana
-        plate_raw = find_best_plate(all_texts)
+        # 1. INTENTO PRIMARIO: Red Neuronal Profunda con EasyOCR
+        easy_plate, easy_conf = extract_plate_easyocr(img)
+        if easy_plate:
+            plate_raw = easy_plate
+            confidence = easy_conf
+            print(f"[IA OCR] Placa detectada con EasyOCR: {plate_raw} (confianza: {confidence:.2f})")
+        else:
+            # 2. INTENTO SECUNDARIO (Fallback): Visión artificial con Tesseract y segmentación HSV
+            target_w = 800
+            ratio = target_w / img.shape[1]
+            img_resized = cv2.resize(img, (target_w, int(img.shape[0] * ratio)), interpolation=cv2.INTER_CUBIC)
+            all_texts = ocr_variants(img_resized)
+            plate_raw = find_best_plate(all_texts)
+            if plate_raw:
+                print(f"[IA OCR] Placa detectada con Tesseract fallback: {plate_raw}")
 
         if plate_raw:
             detected_text = f"{plate_raw[:3]}-{plate_raw[3:]}"
             raw_text = plate_raw
         else:
             # Fallback: mostrar el texto más largo capturado para que el usuario corrija
-            best_raw = max(all_texts, key=len) if all_texts else ''
-            raw_text = best_raw[:12]  # máximo 12 chars para no mostrar basura
+            best_raw = max(all_texts, key=len) if ('all_texts' in locals() and all_texts) else ''
+            raw_text = best_raw[:12]
             if len(best_raw) >= 4:
                 chunk = best_raw[:6]
                 detected_text = f"{chunk[:3]}-{chunk[3:]}" if len(chunk) >= 4 else chunk
