@@ -2,6 +2,7 @@
 Endpoints CRUD para registros de mantenimiento.
 Todas las operaciones se hacen contra la base de datos real en Supabase.
 """
+import re
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import List
@@ -9,6 +10,7 @@ from app.database import get_db
 from app.models import Maintenance, Vehicle, User
 from app.schemas import MaintenanceCreate, MaintenanceResponse, MaintenanceUpdate
 from app.api.auth import get_current_user
+from app.api.vehicles import find_vehicle
 
 router = APIRouter()
 
@@ -36,13 +38,12 @@ def get_all_maintenance_records(db: Session = Depends(get_db), current_user: Use
 @router.post("/", response_model=MaintenanceResponse)
 def create_maintenance_record(record: MaintenanceCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Crea un nuevo registro de mantenimiento."""
-    # Buscar el vehículo por placa (limpiando guiones o espacios)
-    clean_plate = re.sub(r'[-\s]', '', record.plate).upper()
-    vehicle = db.query(Vehicle).filter(Vehicle.plate == clean_plate).first()
+    # Buscar el vehículo por placa de forma flexible
+    vehicle = find_vehicle(db, record.plate)
     if not vehicle:
         raise HTTPException(
             status_code=404,
-            detail=f"No se encontró un vehículo con placa '{clean_plate}'. Registra el vehículo primero."
+            detail=f"No se encontró un vehículo con placa '{record.plate}'. Registra el vehículo primero."
         )
 
     new_record = Maintenance(
@@ -71,8 +72,7 @@ def create_maintenance_record(record: MaintenanceCreate, db: Session = Depends(g
 @router.get("/{plate}", response_model=List[MaintenanceResponse])
 def get_maintenance_history(plate: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Obtiene el historial de mantenimiento de un vehículo por su placa."""
-    clean_plate = re.sub(r'[-\s]', '', plate).upper()
-    vehicle = db.query(Vehicle).filter(Vehicle.plate == clean_plate).first()
+    vehicle = find_vehicle(db, plate)
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehículo no encontrado")
 

@@ -32,7 +32,12 @@ const Login = ({ onLogin }) => {
         return;
       }
 
-      setError('Credenciales incorrectas. Verifica tu usuario y contraseña.');
+      if (response.status === 401) {
+        setError('Credenciales incorrectas. Verifica tu usuario y contraseña.');
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.detail || 'Error de conexión con la base de datos en Supabase.');
+      }
     } catch (err) {
       setError('No se pudo conectar con el backend. Asegúrate de iniciar el servidor en http://127.0.0.1:8000');
     } finally {
